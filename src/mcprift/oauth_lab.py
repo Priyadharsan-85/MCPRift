@@ -24,6 +24,8 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from mcprift import __version__
+
 CLIENT_ID = "mcprift-oauth-lab-client"
 REDIRECT_URI = "http://127.0.0.1/callback"
 VALID_TOKEN = "mcprift-oauth-valid"
@@ -204,7 +206,7 @@ def create_oauth_lab(
     )
     lab = MCPServer(
         "mcprift-oauth-lab",
-        version="0.3.0",
+        version=__version__,
         auth_server_provider=provider,
         auth=auth,
     )

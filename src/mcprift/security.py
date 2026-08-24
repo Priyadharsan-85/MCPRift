@@ -80,12 +80,25 @@ class SecurityResult:
 
 def evaluate(case: SecurityCase, observation: Observation) -> SecurityResult:
     """Evaluate only the observable authorization property."""
-    if observation.outcome is Outcome.UNAVAILABLE:
+    if observation.outcome in {
+        Outcome.TOOL_ERROR,
+        Outcome.PROTOCOL_ERROR,
+        Outcome.TRANSPORT_ERROR,
+        Outcome.UNAVAILABLE,
+    }:
         status = ResultStatus.ERROR
     else:
-        allowed = observation.outcome is Outcome.SUCCEEDED
+        allowed = observation.outcome is Outcome.ALLOWED
+        denied = observation.outcome in {
+            Outcome.AUTHENTICATION_DENIED,
+            Outcome.AUTHORIZATION_DENIED,
+        }
         expected_allowed = case.expected is ExpectedProperty.ALLOWED
-        status = ResultStatus.PASS if allowed == expected_allowed else ResultStatus.FAIL
+        status = (
+            ResultStatus.PASS
+            if ((expected_allowed and allowed) or (not expected_allowed and denied))
+            else ResultStatus.FAIL
+        )
     return SecurityResult(case, observation, status)
 
 

@@ -5,7 +5,12 @@ import tempfile
 import unittest
 
 from mcprift.actors import Actor, ActorKind
-from mcprift.evidence import create_evidence, read_evidence, write_evidence
+from mcprift.evidence import (
+    EVIDENCE_SCHEMA_VERSION,
+    create_evidence,
+    read_evidence,
+    write_evidence,
+)
 from mcprift.oauth_checks import OAuthCheckResult
 from mcprift.operations import (
     Action,
@@ -39,7 +44,7 @@ class EvidenceTests(unittest.TestCase):
             ),
             ExpectedProperty.DENIED,
         )
-        observation = Observation("alice", "authenticated", Outcome.SUCCEEDED, "test")
+        observation = Observation("alice", "authenticated", Outcome.ALLOWED, "test")
         return SecurityResult(case, observation, status)
 
     def test_evidence_excludes_url_tokens_and_argument_values(self) -> None:
@@ -69,6 +74,7 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(sarif["version"], "2.1.0")
         self.assertEqual(sarif["runs"][0]["results"][0]["ruleId"], "TEST-001")
         self.assertEqual(path.name, f"mcprift-{evidence.run_id}.json")
+        self.assertEqual(loaded["schema_version"], EVIDENCE_SCHEMA_VERSION)
 
     def test_session_evidence_records_sequence_without_credentials(self) -> None:
         case = built_in_cases(
@@ -80,12 +86,12 @@ class EvidenceTests(unittest.TestCase):
         observation = Observation(
             "bob",
             "authenticated",
-            Outcome.REJECTED,
+            Outcome.AUTHORIZATION_DENIED,
             "test",
             session_policy=SessionPolicy.REUSED,
             establishing_actor_name="alice",
             establishing_actor_kind="authenticated",
-            establishing_outcome=Outcome.SUCCEEDED,
+            establishing_outcome=Outcome.ALLOWED,
         )
         evidence = create_evidence(
             "http://127.0.0.1:8080/mcp",
@@ -94,7 +100,7 @@ class EvidenceTests(unittest.TestCase):
         serialized = json.dumps(evidence.to_dict())
 
         self.assertIn('"policy": "reused"', serialized)
-        self.assertIn('"establishing_outcome": "succeeded"', serialized)
+        self.assertIn('"establishing_outcome": "allowed"', serialized)
         self.assertNotIn("session-secret-alice", serialized)
         self.assertNotIn("session-secret-bob", serialized)
         self.assertNotIn("127.0.0.1", serialized)

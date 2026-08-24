@@ -18,9 +18,9 @@ from mcprift.mutation import MutationObservation
 from mcprift.oauth_checks import OAuthCheckResult
 from mcprift.security import SecurityResult
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 EVIDENCE_SCHEMA_VERSION = SCHEMA_VERSION
-SUPPORTED_SCHEMA_VERSIONS = {"1", "2"}
+SUPPORTED_SCHEMA_VERSIONS = {"1", "2", "3"}
 MAX_EVIDENCE_BYTES = 2_000_000
 
 

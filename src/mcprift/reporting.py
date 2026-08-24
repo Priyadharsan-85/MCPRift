@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from pathlib import PurePosixPath
 from typing import Any
 
 from mcprift.terminal import green, verdict, yellow
@@ -21,9 +22,7 @@ def terminal_report(evidence: dict[str, Any], *, color: bool = False) -> str:
         status = verdict(
             _plain(result["status"]).upper(), result["status"], enabled=color
         )
-        lines.append(
-            f"{_plain(case['id'])}: {status} - {_plain(case['title'])}"
-        )
+        lines.append(f"{_plain(case['id'])}: {status} - {_plain(case['title'])}")
     for check in oauth_checks:
         raw_status = "pass" if check["passed"] else "fail"
         status = verdict(raw_status.upper(), raw_status, enabled=color)
@@ -61,23 +60,24 @@ def sarif_report(evidence: dict[str, Any]) -> str:
         }
         if item["verdict"] == "pass":
             continue
-        findings.append(
-            {
-                "ruleId": case_id,
-                "level": "error" if item["verdict"] == "fail" else "warning",
-                "message": {
-                    "text": (
-                        f"{title}: expected {item['expected']}, "
-                        f"observed {item['observed']}"
-                    )
-                },
-                "properties": {
-                    "family": family,
-                    "identity": item.get("identity"),
-                    "verdict": item["verdict"],
-                },
-            }
-        )
+        finding = {
+            "ruleId": case_id,
+            "level": "error" if item["verdict"] == "fail" else "warning",
+            "message": {
+                "text": (
+                    f"{title}: expected {item['expected']}, observed {item['observed']}"
+                )
+            },
+            "properties": {
+                "family": family,
+                "identity": item.get("identity"),
+                "verdict": item["verdict"],
+            },
+        }
+        location = _sarif_location(item.get("source"))
+        if location is not None:
+            finding["locations"] = [location]
+        findings.append(finding)
     for item in evidence["results"]:
         case = item["case"]
         case_id = case["id"]
@@ -128,6 +128,7 @@ def sarif_report(evidence: dict[str, Any]) -> str:
                     "driver": {
                         "name": "MCPRift",
                         "version": evidence["tool"]["version"],
+                        "informationUri": "https://github.com/sanjayy0612/MCPRift",
                         "rules": list(rules.values()),
                     }
                 },
@@ -136,6 +137,33 @@ def sarif_report(evidence: dict[str, Any]) -> str:
         ],
     }
     return json.dumps(document, indent=2, sort_keys=True)
+
+
+def _sarif_location(source: object) -> dict[str, Any] | None:
+    """Render only portable, repository-relative source locations."""
+    if not isinstance(source, dict):
+        return None
+    uri = source.get("uri")
+    line = source.get("line")
+    if (
+        not isinstance(uri, str)
+        or not uri
+        or uri != uri.strip()
+        or "\\" in uri
+        or ":" in uri
+        or PurePosixPath(uri).is_absolute()
+        or ".." in PurePosixPath(uri).parts
+        or not isinstance(line, int)
+        or isinstance(line, bool)
+        or line < 1
+    ):
+        return None
+    return {
+        "physicalLocation": {
+            "artifactLocation": {"uri": uri},
+            "region": {"startLine": line},
+        }
+    }
 
 
 def _contract_terminal_report(

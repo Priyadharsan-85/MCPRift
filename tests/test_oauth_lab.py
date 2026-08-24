@@ -11,11 +11,49 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 
+from mcprift.actors import Actor, ActorKind
 from mcprift.cli import main
 from mcprift.oauth_checks import run_oauth_checks
+from mcprift.oauth_lab import INSUFFICIENT_SCOPE_TOKEN
+from mcprift.operations import Action, ActionKind, Outcome, compare_identities
 
 
 class OAuthLabIntegrationTests(unittest.TestCase):
+    def test_general_contract_path_preserves_http_auth_denials(self) -> None:
+        fixture, url = self._start_lab()
+        try:
+            action = Action(
+                ActionKind.TOOL_CALL,
+                "downstream_probe",
+                {},
+                known_safe=True,
+                safety_justification="read-only disposable lab probe",
+            )
+            anonymous = asyncio.run(
+                compare_identities(
+                    url, action, (Actor("anonymous", ActorKind.ANONYMOUS),)
+                )
+            )[0]
+            insufficient = asyncio.run(
+                compare_identities(
+                    url,
+                    action,
+                    (
+                        Actor(
+                            "insufficient",
+                            ActorKind.AUTHENTICATED,
+                            INSUFFICIENT_SCOPE_TOKEN,
+                        ),
+                    ),
+                )
+            )[0]
+        finally:
+            fixture.terminate()
+            fixture.wait(timeout=5)
+
+        self.assertEqual(anonymous.outcome, Outcome.AUTHENTICATION_DENIED)
+        self.assertEqual(insufficient.outcome, Outcome.AUTHORIZATION_DENIED)
+
     def test_secure_oauth_lab_passes_all_checks(self) -> None:
         fixture, url = self._start_lab()
         try:

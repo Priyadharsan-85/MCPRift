@@ -1,0 +1,251 @@
+{
+  "schema_version": 2,
+  "target": "http://127.0.0.1:8080/mcp",
+  "actors": {
+    "anonymous": {
+      "kind": "anonymous"
+    },
+    "alice": {
+      "kind": "authenticated",
+      "token_env": "MCPRIFT_AUTH_TOKEN"
+    },
+    "bob": {
+      "kind": "authenticated",
+      "token_env": "MCPRIFT_BOB_TOKEN"
+    },
+    "invalid": {
+      "kind": "invalid",
+      "token_env": "MCPRIFT_INVALID_TOKEN"
+    },
+    "expired": {
+      "kind": "expired",
+      "token_env": "MCPRIFT_EXPIRED_TOKEN"
+    }
+  },
+  "access": [
+    {
+      "id": "MCPRIFT-AUTH-001",
+      "title": "anonymous tool access is denied",
+      "actor": "anonymous",
+      "action": {
+        "kind": "tool-call",
+        "target": "safe_echo",
+        "arguments": {
+          "message": "mcprift-probe"
+        },
+        "known_safe": true,
+        "safety_justification": "The disposable lab tool only echoes a fixed probe message."
+      },
+      "expected": "denied"
+    },
+    {
+      "id": "MCPRIFT-AUTH-002",
+      "title": "Alice can invoke the safe tool",
+      "actor": "alice",
+      "action": {
+        "kind": "tool-call",
+        "target": "safe_echo",
+        "arguments": {
+          "message": "mcprift-probe"
+        },
+        "known_safe": true,
+        "safety_justification": "The disposable lab tool only echoes a fixed probe message."
+      },
+      "expected": "allowed"
+    },
+    {
+      "id": "MCPRIFT-AUTH-003",
+      "title": "invalid credentials are denied",
+      "actor": "invalid",
+      "action": {
+        "kind": "tool-call",
+        "target": "safe_echo",
+        "arguments": {
+          "message": "mcprift-probe"
+        },
+        "known_safe": true,
+        "safety_justification": "The disposable lab tool only echoes a fixed probe message."
+      },
+      "expected": "denied"
+    },
+    {
+      "id": "MCPRIFT-AUTH-004",
+      "title": "expired credentials are denied",
+      "actor": "expired",
+      "action": {
+        "kind": "tool-call",
+        "target": "safe_echo",
+        "arguments": {
+          "message": "mcprift-probe"
+        },
+        "known_safe": true,
+        "safety_justification": "The disposable lab tool only echoes a fixed probe message."
+      },
+      "expected": "denied"
+    },
+    {
+      "id": "MCPRIFT-BOUNDARY-001",
+      "title": "Alice can read her resource",
+      "actor": "alice",
+      "action": {
+        "kind": "resource-read",
+        "target": "lab://users/alice"
+      },
+      "expected": "allowed"
+    },
+    {
+      "id": "MCPRIFT-BOUNDARY-002",
+      "title": "Alice cannot read Bob's resource",
+      "actor": "alice",
+      "action": {
+        "kind": "resource-read",
+        "target": "lab://users/bob"
+      },
+      "expected": "denied"
+    },
+    {
+      "id": "MCPRIFT-BOUNDARY-003",
+      "title": "Bob can read his resource",
+      "actor": "bob",
+      "action": {
+        "kind": "resource-read",
+        "target": "lab://users/bob"
+      },
+      "expected": "allowed"
+    },
+    {
+      "id": "MCPRIFT-BOUNDARY-004",
+      "title": "Bob cannot read Alice's resource",
+      "actor": "bob",
+      "action": {
+        "kind": "resource-read",
+        "target": "lab://users/alice"
+      },
+      "expected": "denied"
+    },
+    {
+      "id": "MCPRIFT-PROMPT-001",
+      "title": "anonymous prompt access is denied",
+      "actor": "anonymous",
+      "action": {
+        "kind": "prompt-get",
+        "target": "review_prompt",
+        "arguments": {
+          "subject": "mcprift"
+        }
+      },
+      "expected": "denied"
+    },
+    {
+      "id": "MCPRIFT-PROMPT-002",
+      "title": "Alice can retrieve the review prompt",
+      "actor": "alice",
+      "action": {
+        "kind": "prompt-get",
+        "target": "review_prompt",
+        "arguments": {
+          "subject": "mcprift"
+        }
+      },
+      "expected": "allowed"
+    },
+    {
+      "id": "MCPRIFT-SESSION-001",
+      "title": "Alice's session identity cannot authorize Bob",
+      "actor": "bob",
+      "action": {
+        "kind": "resource-read",
+        "target": "lab://users/alice"
+      },
+      "expected": "denied",
+      "session": {
+        "policy": "reused",
+        "establishing_actor": "alice"
+      }
+    }
+  ],
+  "visibility": [
+    {
+      "id": "MCPRIFT-VIS-001",
+      "title": "safe tool is visible anonymously",
+      "actor": "anonymous",
+      "kind": "tool",
+      "capability": "safe_echo",
+      "expected": "visible"
+    },
+    {
+      "id": "MCPRIFT-VIS-002",
+      "title": "safe tool is visible to Alice",
+      "actor": "alice",
+      "kind": "tool",
+      "capability": "safe_echo",
+      "expected": "visible"
+    },
+    {
+      "id": "MCPRIFT-VIS-003",
+      "title": "private resource template is hidden anonymously",
+      "actor": "anonymous",
+      "kind": "resource-template",
+      "capability": "private_user_resource",
+      "expected": "hidden"
+    },
+    {
+      "id": "MCPRIFT-VIS-004",
+      "title": "private resource template is visible to Alice",
+      "actor": "alice",
+      "kind": "resource-template",
+      "capability": "private_user_resource",
+      "expected": "visible"
+    },
+    {
+      "id": "MCPRIFT-VIS-005",
+      "title": "review prompt is hidden anonymously",
+      "actor": "anonymous",
+      "kind": "prompt",
+      "capability": "review_prompt",
+      "expected": "hidden"
+    },
+    {
+      "id": "MCPRIFT-VIS-006",
+      "title": "review prompt is visible to Alice",
+      "actor": "alice",
+      "kind": "prompt",
+      "capability": "review_prompt",
+      "expected": "visible"
+    },
+    {
+      "id": "MCPRIFT-VIS-007",
+      "title": "public resource is visible anonymously",
+      "actor": "anonymous",
+      "kind": "resource",
+      "capability": "public_information",
+      "expected": "visible"
+    }
+  ],
+  "protocol": [
+    {
+      "id": "MCPRIFT-PROTOCOL-001",
+      "title": "invalid-json is rejected",
+      "mutation": "invalid-json",
+      "expected": "rejected"
+    },
+    {
+      "id": "MCPRIFT-PROTOCOL-002",
+      "title": "missing-jsonrpc is rejected",
+      "mutation": "missing-jsonrpc",
+      "expected": "rejected"
+    },
+    {
+      "id": "MCPRIFT-PROTOCOL-003",
+      "title": "unknown-method is rejected",
+      "mutation": "unknown-method",
+      "expected": "rejected"
+    },
+    {
+      "id": "MCPRIFT-PROTOCOL-004",
+      "title": "empty-batch is rejected",
+      "mutation": "empty-batch",
+      "expected": "rejected"
+    }
+  ]
+}

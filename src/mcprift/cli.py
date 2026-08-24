@@ -324,7 +324,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return (
             2
             if any(
-                observation.outcome is Outcome.UNAVAILABLE
+                observation.outcome
+                not in {
+                    Outcome.ALLOWED,
+                    Outcome.AUTHENTICATION_DENIED,
+                    Outcome.AUTHORIZATION_DENIED,
+                }
                 for observation in observations
             )
             else 0
@@ -456,8 +461,7 @@ def _run_demo(evidence_dir: str | None) -> int:
             ]
             print(_green("MCPRift demo: bundled local authorization lab"))
             print(
-                f"checked {len(contract_results)} cases: "
-                f"{_green(f'{passed} passed')}"
+                f"checked {len(contract_results)} cases: {_green(f'{passed} passed')}"
             )
             if failed:
                 print(_yellow(f"needs attention: {', '.join(failed)}"))

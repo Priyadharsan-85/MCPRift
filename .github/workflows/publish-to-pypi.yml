@@ -1,0 +1,72 @@
+name: Publish Python package
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and verify distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.8.22"
+
+      - name: Verify the tag matches the package version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          package_version="$(PYTHONPATH=src python -c 'from mcprift import __version__; print(__version__)')"
+          test "$RELEASE_TAG" = "v$package_version"
+
+      - name: Install and verify the locked project
+        run: |
+          uv sync --locked
+          uv run python -m unittest discover -s tests -v
+          uv run ruff format --check .
+          uv run ruff check .
+
+      - name: Build and inspect distributions
+        run: |
+          uv build
+          uvx --from twine==7.0.0 twine check dist/*
+
+      - name: Store distributions for the publish job
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-package-distributions
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/mcprift
+    permissions:
+      id-token: write
+    steps:
+      - name: Download verified distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish with PyPI Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1

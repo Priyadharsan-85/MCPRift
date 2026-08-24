@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections.abc import Mapping
 from dataclasses import replace
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver import Context
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
+
+from mcprift import __version__
 
 ALICE_TOKEN = "mcprift-lab-alice"
 BOB_TOKEN = "mcprift-lab-bob"
@@ -38,7 +43,7 @@ def create_lab(vulnerabilities: frozenset[str] = frozenset()) -> MCPServer:
 
     lab = MCPServer(
         "mcprift-security-lab",
-        version="0.4.0",
+        version=__version__,
         instructions="Disposable local authorization test fixture.",
     )
     established_actors: dict[str, str] = {}
@@ -92,6 +97,83 @@ def create_lab(vulnerabilities: frozenset[str] = frozenset()) -> MCPServer:
     _install_visibility_filters(lab, vulnerabilities)
 
     return lab
+
+
+class _AuthorizationBoundaryMiddleware(BaseHTTPMiddleware):
+    """Apply the disposable lab policy at the HTTP boundary."""
+
+    def __init__(self, app, vulnerabilities: frozenset[str]):
+        super().__init__(app)
+        self.vulnerabilities = vulnerabilities
+        self.established_actors: dict[str, str] = {}
+
+    async def dispatch(self, request, call_next):
+        if request.method == "POST" and request.url.path.rstrip("/") == "/mcp":
+            try:
+                message = json.loads(await request.body())
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                message = None
+            if isinstance(message, dict):
+                denial = self._denial(request.headers, message)
+                if denial is not None:
+                    status, error = denial
+                    challenge = 'Bearer realm="mcprift-lab"'
+                    if status == 403 or request.headers.get("authorization"):
+                        challenge += f', error="{error}"'
+                    return JSONResponse(
+                        {"error": error},
+                        status_code=status,
+                        headers={"WWW-Authenticate": challenge},
+                    )
+        return await call_next(request)
+
+    def _denial(
+        self, headers: Mapping[str, str], message: dict
+    ) -> tuple[int, str] | None:
+        method = message.get("method")
+        params = message.get("params") or {}
+        actor = _verified_actor(headers, self.vulnerabilities)
+        established_actor = self._established_actor(headers, actor)
+        if method in {"tools/call", "prompts/get"} and actor is None:
+            if method == "tools/call" and ANONYMOUS_TOOL in self.vulnerabilities:
+                return None
+            if method == "prompts/get" and PROMPT_ACCESS in self.vulnerabilities:
+                return None
+            return 401, "invalid_token"
+        if method == "resources/read":
+            uri = params.get("uri") if isinstance(params, dict) else None
+            if (
+                actor is None
+                and isinstance(uri, str)
+                and uri.startswith("lab://users/")
+            ):
+                return 401, "invalid_token"
+            if (
+                actor is not None
+                and CROSS_USER_RESOURCE not in self.vulnerabilities
+                and isinstance(uri, str)
+                and uri.startswith("lab://users/")
+                and uri.removeprefix("lab://users/") != actor
+            ):
+                owner = uri.removeprefix("lab://users/")
+                vulnerable_reuse = (
+                    SESSION_IDENTITY_CROSSOVER in self.vulnerabilities
+                    and established_actor == owner
+                    and established_actor != actor
+                )
+                if not vulnerable_reuse:
+                    return 403, "insufficient_scope"
+        return None
+
+    def _established_actor(
+        self, headers: Mapping[str, str], actor: str | None
+    ) -> str | None:
+        session_id = headers.get("mcp-session-id")
+        if session_id is None:
+            return actor
+        if session_id not in self.established_actors and actor is not None:
+            self.established_actors[session_id] = actor
+        return self.established_actors.get(session_id)
 
 
 def _install_visibility_filters(
@@ -169,13 +251,14 @@ def main() -> None:
     )
     arguments = parser.parse_args()
     lab = create_lab(frozenset(arguments.vulnerable))
-    lab.run(
-        transport="streamable-http",
-        host="127.0.0.1",
-        port=arguments.port,
-        json_response=True,
-        stateless_http=False,
+    import uvicorn
+
+    app = lab.streamable_http_app(json_response=True, stateless_http=False)
+    app.add_middleware(
+        _AuthorizationBoundaryMiddleware,
+        vulnerabilities=frozenset(arguments.vulnerable),
     )
+    uvicorn.run(app, host="127.0.0.1", port=arguments.port, log_level="warning")
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ from mcprift.security import (
 
 
 class SecurityTests(unittest.TestCase):
-    def test_evaluates_allowed_denied_and_transport_error(self) -> None:
+    def test_evaluates_only_explicit_authorization_results_as_verdicts(self) -> None:
         actor = Actor("anonymous", ActorKind.ANONYMOUS)
         case = SecurityCase(
             "TEST-001",
@@ -31,15 +31,23 @@ class SecurityTests(unittest.TestCase):
             ExpectedProperty.DENIED,
         )
 
-        denied = Observation("anonymous", "anonymous", Outcome.REJECTED, "test")
-        allowed = Observation("anonymous", "anonymous", Outcome.SUCCEEDED, "test")
-        unavailable = Observation(
-            "anonymous", "anonymous", Outcome.UNAVAILABLE, "unknown"
-        )
-
-        self.assertEqual(evaluate(case, denied).status, ResultStatus.PASS)
+        allowed = Observation("anonymous", "anonymous", Outcome.ALLOWED, "test")
+        for outcome in (
+            Outcome.AUTHENTICATION_DENIED,
+            Outcome.AUTHORIZATION_DENIED,
+        ):
+            denied = Observation("anonymous", "anonymous", outcome, "test")
+            self.assertEqual(evaluate(case, denied).status, ResultStatus.PASS)
         self.assertEqual(evaluate(case, allowed).status, ResultStatus.FAIL)
-        self.assertEqual(evaluate(case, unavailable).status, ResultStatus.ERROR)
+        for outcome in (
+            Outcome.TOOL_ERROR,
+            Outcome.PROTOCOL_ERROR,
+            Outcome.TRANSPORT_ERROR,
+            Outcome.UNAVAILABLE,
+        ):
+            with self.subTest(outcome=outcome):
+                observation = Observation("anonymous", "anonymous", outcome, "unknown")
+                self.assertEqual(evaluate(case, observation).status, ResultStatus.ERROR)
 
     def test_built_in_suite_covers_identity_and_user_boundaries(self) -> None:
         cases = built_in_cases(
