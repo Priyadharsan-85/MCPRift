@@ -15,6 +15,7 @@ from mcprift.assessment import load_assessment
 from mcprift.capabilities import CapabilityInventory
 from mcprift.cli import _demo_assessment, main
 from mcprift.client import ConnectionResult
+from mcprift.operations import Observation, Outcome
 
 
 class CliTests(unittest.TestCase):
@@ -29,7 +30,7 @@ class CliTests(unittest.TestCase):
     def test_version(self) -> None:
         result = self.run_cli("version")
         self.assertEqual(result.returncode, 0)
-        self.assertEqual(result.stdout, "mcprift 0.4.0\n")
+        self.assertEqual(result.stdout, "mcprift 0.5.0\n")
         self.assertEqual(result.stderr, "")
 
     def test_help(self) -> None:
@@ -51,9 +52,7 @@ class CliTests(unittest.TestCase):
 
     def test_demo_assessment_uses_the_temporary_lab_target(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            path = _demo_assessment(
-                Path(directory), "http://127.0.0.1:48123/mcp"
-            )
+            path = _demo_assessment(Path(directory), "http://127.0.0.1:48123/mcp")
             value = json.loads(path.read_text())
             plan = load_assessment(path)
 
@@ -70,6 +69,42 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 2)
         self.assertIn("environment variable", result.stderr)
+
+    def test_compare_returns_execution_error_for_non_authorization_outcome(
+        self,
+    ) -> None:
+        async def compare(*args, **kwargs):
+            return (
+                Observation(
+                    "anonymous",
+                    "anonymous",
+                    Outcome.TOOL_ERROR,
+                    "test",
+                ),
+            )
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "MCPRIFT_AUTH_TOKEN": "authenticated",
+                    "MCPRIFT_INVALID_TOKEN": "invalid",
+                    "MCPRIFT_EXPIRED_TOKEN": "expired",
+                },
+            ),
+            patch("mcprift.cli.compare_identities", new=compare),
+            redirect_stdout(io.StringIO()),
+        ):
+            exit_code = main(
+                [
+                    "compare",
+                    "http://127.0.0.1:8080/mcp",
+                    "--safe-tool",
+                    "safe_echo",
+                ]
+            )
+
+        self.assertEqual(exit_code, 2)
 
     def test_connect_error_hides_credential_bearing_url(self) -> None:
         result = self.run_cli("connect", "http://user:secret@127.0.0.1:8080/mcp")

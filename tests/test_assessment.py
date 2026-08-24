@@ -21,6 +21,8 @@ class AssessmentTests(unittest.TestCase):
         self.assertEqual(len(plan.visibility), 7)
         self.assertEqual(len(plan.protocol), 4)
         self.assertEqual(plan.actors["alice"].token_env, "MCPRIFT_AUTH_TOKEN")
+        self.assertEqual(plan.source_uri, "assessment.json")
+        self.assertGreater(plan.case_lines["MCPRIFT-AUTH-001"], 1)
 
     def test_credential_resolution_is_deferred(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -35,6 +37,21 @@ class AssessmentTests(unittest.TestCase):
         with patch.dict(os.environ, variables):
             with self.assertRaises(ConnectionFailure):
                 plan.resolve_actors()
+
+    def test_checked_in_lab_contract_matches_generated_template(self) -> None:
+        tracked = Path(__file__).parents[1] / "testdata" / "lab-assessment.json"
+        plan = load_assessment(tracked)
+        with tempfile.TemporaryDirectory() as directory:
+            generated = write_lab_template(Path(directory) / "assessment.json")
+
+            self.assertEqual(
+                json.loads(tracked.read_text()), json.loads(generated.read_text())
+            )
+        self.assertEqual(plan.source_uri, "testdata/lab-assessment.json")
+        source_line = tracked.read_text().splitlines()[
+            plan.case_lines["MCPRIFT-BOUNDARY-002"] - 1
+        ]
+        self.assertIn('"id": "MCPRIFT-BOUNDARY-002"', source_line)
 
     def test_strict_validation_rejects_duplicates_unknown_fields_and_inline_tokens(
         self,
