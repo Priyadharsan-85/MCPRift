@@ -1,7 +1,7 @@
-# MCPRift 0.4
+# MCPRift
 
 <p align="center">
-  <img src="assets/mcprift-logo.png" alt="MCPRift logo" width="180">
+  <img src="https://raw.githubusercontent.com/sanjayy0612/MCPRift/main/assets/mcprift-logo.png" alt="MCPRift logo" width="180">
 </p>
 
 > Find the seam before someone crosses it.
@@ -15,7 +15,8 @@ It is designed for authorized testing of local or otherwise controlled targets.
 It is not a network scanner, exploit framework, complete OAuth certification
 suite, or general-purpose MCP client.
 
-Licensed under [Apache-2.0](LICENSE).
+Licensed under
+[Apache-2.0](https://github.com/sanjayy0612/MCPRift/blob/main/LICENSE).
 
 ## What it does
 
@@ -57,6 +58,11 @@ terminal, JSON, or SARIF evidence. It returns `0` for passing verdicts, `1`
 for security-policy failures, and `2` for invalid configuration or execution
 errors.
 
+For access cases, `denied` is satisfied only by an explicit HTTP `401` or
+`403` response from the protected endpoint. Tool errors, MCP protocol errors,
+transport failures, and an unavailable endpoint are execution errors; they do
+not count as successful denials.
+
 ## Safety boundary
 
 Safety constraints are part of the implementation, not just usage advice:
@@ -84,6 +90,19 @@ Use MCPRift only against systems and data you are authorized to assess.
 - An MCP server reachable through controlled Streamable HTTP
 
 The project currently depends on `mcp==2.0.0` and `httpx2`.
+
+## Installation
+
+Install a published release as an isolated command-line tool:
+
+```sh
+uv tool install mcprift
+mcprift version
+mcprift demo
+```
+
+For source development, clone this repository and use the locked environment
+shown below.
 
 ## Quick start: disposable lab and CI contract
 
@@ -134,18 +153,24 @@ private evidence file under `mcprift-evidence/` and returns:
 
 ## CI
 
-The checked-in [authorization-contract workflow](.github/workflows/authorization-contract.yml)
+The checked-in
+[authorization-contract workflow](https://github.com/sanjayy0612/MCPRift/blob/main/.github/workflows/authorization-contract.yml)
 is the reference CI integration. It runs the unit suite and Ruff, starts the
 disposable lab, validates and runs the secure contract, uploads its private
 evidence, and confirms that a seeded cross-tenant regression returns exit code
-`1`. The seeded failure is uploaded as SARIF so a pull request receives an
-actionable annotation.
+`1`. Its SARIF is retained as an artifact on every run and uploaded to GitHub
+code scanning for same-repository pull requests, with a source location in the
+checked-in contract. It is deliberately not uploaded on `main`, where the known
+self-test failure would create a persistent false alert. GitHub shows an inline
+pull-request annotation only when the referenced contract line is part of the
+change.
 
 Run the same checks locally:
 
 ```sh
 uv sync
 uv run python -m unittest discover -s tests -v
+uv run ruff format --check .
 uv run ruff check .
 ```
 
@@ -169,14 +194,14 @@ actor; protocol cases select one deterministic mutation. Credentialed actors
 contain only a `token_env` name, never a token value.
 
 For a step-by-step guide to writing a contract for your own MCP server, see
-[Writing an MCPRift authorization contract](docs/writing-contracts.md).
+[Writing an MCPRift authorization contract](https://github.com/sanjayy0612/MCPRift/blob/main/docs/writing-contracts.md).
 
 ## Public end-to-end example
 
 The companion [MCPRift pilot server](https://github.com/sanjayy0612/test_pilot)
 is a small independent Streamable HTTP server with two synthetic identities,
 Alice and Bob. Its contract lives in
-[`testdata/pilot-assessment.json`](testdata/pilot-assessment.json) and checks
+[`testdata/pilot-assessment.json`](https://github.com/sanjayy0612/MCPRift/blob/main/testdata/pilot-assessment.json) and checks
 that each identity may read only its own synthetic profile.
 
 The pilot repository's GitHub Actions workflow starts the server and runs this
@@ -363,7 +388,7 @@ or test commands.
 
 ## Current scope and limitations
 
-MCPRift 0.4.0 does not claim complete OAuth conformance, stdio target support,
+MCPRift 0.5.0 does not claim complete OAuth conformance, stdio target support,
 broad network scanning, exploit automation, or arbitrary third-party plugins.
 The OAuth suite remains explicitly lab-only and uses a disposable HTTP-only
 local provider; production TLS,
@@ -380,4 +405,5 @@ security.
 
 ## License
 
-No license file is currently included in the repository.
+MCPRift is licensed under the Apache License 2.0. See
+[LICENSE](https://github.com/sanjayy0612/MCPRift/blob/main/LICENSE).

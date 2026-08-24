@@ -140,7 +140,10 @@ An access case is one identity performing one action with an expected result:
 * `prompt-get` fetches a named prompt, optionally with a JSON arguments object.
 
 Use `allowed` when the action must succeed and `denied` when the action must be
-rejected. An unavailable server is an execution error, not a successful denial.
+rejected. A denied expectation passes only when the protected endpoint returns
+an explicit HTTP `401` or `403`. Tool errors, MCP protocol errors, transport
+failures, and an unavailable endpoint are execution errors, not successful
+denials.
 
 ### Visibility cases
 
