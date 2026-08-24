@@ -9,7 +9,7 @@ import unittest
 
 from mcprift.actors import Actor, ActorKind
 from mcprift.capabilities import inspect_capabilities
-from mcprift.client import controlled_session
+from mcprift.client import HTTPStatusRecorder, controlled_session
 from mcprift.evidence import create_evidence
 from mcprift.lab import ALICE_TOKEN, BOB_TOKEN, EXPIRED_TOKEN
 from mcprift.mutation import MutationKind, run_mutation
@@ -40,6 +40,20 @@ class LabIntegrationTests(unittest.TestCase):
             fixture.wait(timeout=5)
 
         self.assertTrue(all(result.status is ResultStatus.PASS for result in results))
+        self.assertEqual(
+            tuple(result.observation.outcome for result in results),
+            (
+                Outcome.AUTHENTICATION_DENIED,
+                Outcome.ALLOWED,
+                Outcome.AUTHENTICATION_DENIED,
+                Outcome.AUTHENTICATION_DENIED,
+                Outcome.ALLOWED,
+                Outcome.AUTHORIZATION_DENIED,
+                Outcome.ALLOWED,
+                Outcome.AUTHORIZATION_DENIED,
+                Outcome.AUTHORIZATION_DENIED,
+            ),
+        )
         self.assertEqual(len(inventory.capabilities), 4)
         # The stateful lab rejects a raw request without an established session;
         # MCPRift retains only the status, size, and digest of that response.
@@ -73,7 +87,7 @@ class LabIntegrationTests(unittest.TestCase):
                     fixture.wait(timeout=5)
                 self.assertEqual(result.status, ResultStatus.FAIL)
                 if vulnerability == "session-identity-crossover":
-                    self.assertEqual(fresh_bob_outcome, Outcome.REJECTED)
+                    self.assertEqual(fresh_bob_outcome, Outcome.AUTHORIZATION_DENIED)
 
     def _cases(self) -> tuple:
         return built_in_cases(
@@ -95,8 +109,13 @@ class LabIntegrationTests(unittest.TestCase):
         async def observe() -> Outcome:
             bob = Actor("bob", ActorKind.AUTHENTICATED, BOB_TOKEN)
             action = Action(ActionKind.RESOURCE_READ, "lab://users/alice")
-            async with controlled_session(url, bob, legacy_protocol=True) as session:
-                observation = await observe_client(session.client, bob, action)
+            recorder = HTTPStatusRecorder()
+            async with controlled_session(
+                url, bob, legacy_protocol=True, status_recorder=recorder
+            ) as session:
+                observation = await observe_client(
+                    session.client, bob, action, recorder
+                )
             return observation.outcome
 
         return asyncio.run(observe())
