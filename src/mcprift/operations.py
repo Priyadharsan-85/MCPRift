@@ -7,11 +7,14 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Any
 
+import httpx2
 from mcp import Client
+from mcp.shared.exceptions import MCPError
+from mcp_types import CONNECTION_CLOSED, REQUEST_TIMEOUT
 
 from mcprift.actors import Actor
 from mcprift.client import (
-    controlled_client,
+    HTTPStatusRecorder,
     controlled_session,
     validate_controlled_url,
 )
@@ -24,8 +27,12 @@ class ActionKind(StrEnum):
 
 
 class Outcome(StrEnum):
-    SUCCEEDED = "succeeded"
-    REJECTED = "rejected"
+    ALLOWED = "allowed"
+    AUTHENTICATION_DENIED = "authentication-denied"
+    AUTHORIZATION_DENIED = "authorization-denied"
+    TOOL_ERROR = "tool-error"
+    PROTOCOL_ERROR = "protocol-error"
+    TRANSPORT_ERROR = "transport-error"
     UNAVAILABLE = "unavailable"
 
 
@@ -121,17 +128,31 @@ async def compare_identities(
             return await asyncio.wait_for(
                 _observe_over_http(raw_url, actor, action), timeout_seconds
             )
-        except Exception:
+        except Exception as error:
             return Observation(
-                actor.name, actor.kind.value, Outcome.UNAVAILABLE, "unknown"
+                actor.name,
+                actor.kind.value,
+                _exception_outcome(error, None),
+                "unknown",
             )
 
     return tuple([await run(actor) for actor in actors])
 
 
 async def _observe_over_http(raw_url: str, actor: Actor, action: Action) -> Observation:
-    async with controlled_client(raw_url, actor) as client:
-        return await observe_client(client, actor, action)
+    recorder = HTTPStatusRecorder()
+    try:
+        async with controlled_session(
+            raw_url, actor, status_recorder=recorder
+        ) as session:
+            return await observe_client(session.client, actor, action, recorder)
+    except Exception as error:
+        return Observation(
+            actor.name,
+            actor.kind.value,
+            _exception_outcome(error, recorder.status),
+            "unknown",
+        )
 
 
 async def observe_reused_session(
@@ -144,18 +165,19 @@ async def observe_reused_session(
 ) -> Observation:
     """Run one safe action before and after an actor change in one SDK session."""
     validate_controlled_url(raw_url)
+    recorder = HTTPStatusRecorder()
     try:
         return await asyncio.wait_for(
             _observe_reused_session(
-                raw_url, establishing_actor, requesting_actor, action
+                raw_url, establishing_actor, requesting_actor, action, recorder
             ),
             timeout_seconds,
         )
-    except Exception:
+    except Exception as error:
         return Observation(
             requesting_actor.name,
             requesting_actor.kind.value,
-            Outcome.UNAVAILABLE,
+            _exception_outcome(error, recorder.status),
             "unknown",
             session_policy=SessionPolicy.REUSED,
             establishing_actor_name=establishing_actor.name,
@@ -168,12 +190,18 @@ async def _observe_reused_session(
     establishing_actor: Actor,
     requesting_actor: Actor,
     action: Action,
+    recorder: HTTPStatusRecorder,
 ) -> Observation:
     async with controlled_session(
-        raw_url, establishing_actor, legacy_protocol=True
+        raw_url,
+        establishing_actor,
+        legacy_protocol=True,
+        status_recorder=recorder,
     ) as session:
-        establishing = await observe_client(session.client, establishing_actor, action)
-        if establishing.outcome is not Outcome.SUCCEEDED:
+        establishing = await observe_client(
+            session.client, establishing_actor, action, recorder
+        )
+        if establishing.outcome is not Outcome.ALLOWED:
             return Observation(
                 requesting_actor.name,
                 requesting_actor.kind.value,
@@ -185,7 +213,10 @@ async def _observe_reused_session(
                 establishing_outcome=establishing.outcome,
             )
         session.bind_actor(requesting_actor)
-        requesting = await observe_client(session.client, requesting_actor, action)
+        recorder.status = None
+        requesting = await observe_client(
+            session.client, requesting_actor, action, recorder
+        )
         return replace(
             requesting,
             session_policy=SessionPolicy.REUSED,
@@ -195,24 +226,33 @@ async def _observe_reused_session(
         )
 
 
-async def observe_client(client: Client, actor: Actor, action: Action) -> Observation:
+async def observe_client(
+    client: Client,
+    actor: Actor,
+    action: Action,
+    status_recorder: HTTPStatusRecorder | None = None,
+) -> Observation:
     """Observe one operation and retain no response payload."""
     protocol_version = client.protocol_version or "unknown"
+    if status_recorder is not None:
+        status_recorder.status = None
     try:
         if action.kind is ActionKind.TOOL_CALL:
             result = await client.call_tool(action.target, action.arguments)
-            outcome = Outcome.REJECTED if result.is_error else Outcome.SUCCEEDED
+            outcome = Outcome.TOOL_ERROR if result.is_error else Outcome.ALLOWED
             count = len(result.content)
         elif action.kind is ActionKind.RESOURCE_READ:
             result = await client.read_resource(action.target)
-            outcome = Outcome.SUCCEEDED
+            outcome = Outcome.ALLOWED
             count = len(result.contents)
         else:
             result = await client.get_prompt(action.target, action.arguments)
-            outcome = Outcome.SUCCEEDED
+            outcome = Outcome.ALLOWED
             count = len(result.messages)
-    except Exception:
-        outcome = Outcome.REJECTED
+    except Exception as error:
+        outcome = _exception_outcome(
+            error, status_recorder.status if status_recorder is not None else None
+        )
         count = None
     return Observation(
         actor.name,
@@ -221,3 +261,26 @@ async def observe_client(client: Client, actor: Actor, action: Action) -> Observ
         protocol_version,
         item_count=count,
     )
+
+
+def _exception_outcome(error: BaseException, http_status: int | None) -> Outcome:
+    """Map only definitive signals; never infer denial from arbitrary errors."""
+    if http_status == 401:
+        return Outcome.AUTHENTICATION_DENIED
+    if http_status == 403:
+        return Outcome.AUTHORIZATION_DENIED
+    if isinstance(
+        error,
+        (
+            TimeoutError,
+            asyncio.TimeoutError,
+            httpx2.TimeoutException,
+            httpx2.ConnectError,
+        ),
+    ):
+        return Outcome.UNAVAILABLE
+    if isinstance(error, MCPError):
+        if error.code in {REQUEST_TIMEOUT, CONNECTION_CLOSED}:
+            return Outcome.UNAVAILABLE
+        return Outcome.PROTOCOL_ERROR
+    return Outcome.TRANSPORT_ERROR

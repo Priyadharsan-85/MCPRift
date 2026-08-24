@@ -21,6 +21,16 @@ if TYPE_CHECKING:
 TRANSPORT = "streamable-http"
 
 
+@dataclass
+class HTTPStatusRecorder:
+    """Per-session, sanitized HTTP status metadata."""
+
+    status: int | None = None
+
+    async def record(self, response: httpx2.Response) -> None:
+        self.status = response.status_code
+
+
 class _SuppressTargetLog(logging.Filter):
     """Prevent the HTTP client from logging credential-bearing target URLs."""
 
@@ -55,6 +65,7 @@ class ControlledSession:
 
     client: Client
     _http_client: httpx2.AsyncClient = field(repr=False)
+    status_recorder: HTTPStatusRecorder = field(default_factory=HTTPStatusRecorder)
 
     def bind_actor(self, actor: Actor) -> None:
         """Replace, rather than merge, the credential bound to future requests."""
@@ -132,14 +143,18 @@ async def controlled_session(
     actor: Actor | None = None,
     *,
     legacy_protocol: bool = False,
+    status_recorder: HTTPStatusRecorder | None = None,
 ) -> AsyncIterator[ControlledSession]:
     """Open an SDK session and expose only an explicit actor rebind operation."""
     url = validate_controlled_url(raw_url)
+    recorder = status_recorder or HTTPStatusRecorder()
     headers = actor.headers if actor is not None else {"X-MCPRift-Unbound": "true"}
     async with httpx2.AsyncClient(
-        headers=headers, follow_redirects=False
+        headers=headers,
+        follow_redirects=False,
+        event_hooks={"response": [recorder.record]},
     ) as http_client:
         transport = streamable_http_client(url, http_client=http_client)
         mode = "legacy" if legacy_protocol else "auto"
         async with Client(transport, client_info=None, mode=mode) as client:
-            yield ControlledSession(client, http_client)
+            yield ControlledSession(client, http_client, recorder)
