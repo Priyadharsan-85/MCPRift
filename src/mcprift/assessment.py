@@ -77,13 +77,15 @@ class ProtocolDeclaration:
 
 @dataclass(frozen=True)
 class AssessmentPlan:
-    """An operator-authored v0.4 contract with no resolved secrets."""
+    """An operator-authored contract with no resolved secrets."""
 
     target: str
     actors: dict[str, ActorDeclaration]
     access: tuple[AccessDeclaration, ...]
     visibility: tuple[VisibilityDeclaration, ...]
     protocol: tuple[ProtocolDeclaration, ...]
+    source_uri: str
+    case_lines: dict[str, int]
 
     @property
     def cases(self) -> tuple[AccessDeclaration, ...]:
@@ -97,6 +99,10 @@ class AssessmentPlan:
         return {
             name: declaration.resolve() for name, declaration in self.actors.items()
         }
+
+    def source_for(self, case_id: str) -> dict[str, str | int]:
+        """Return a repository-safe SARIF source location for a declared case."""
+        return {"uri": self.source_uri, "line": self.case_lines[case_id]}
 
     def runtime_access_cases(
         self, actors: dict[str, Actor]
@@ -119,10 +125,10 @@ class AssessmentPlan:
 
 def load_assessment(path: str | Path) -> AssessmentPlan:
     """Load a contract strictly and offline; credentials are not resolved."""
+    assessment_path = Path(path)
     try:
-        value = json.loads(
-            Path(path).read_text(encoding="utf-8"), parse_constant=_reject_constant
-        )
+        source_text = assessment_path.read_text(encoding="utf-8")
+        value = json.loads(source_text, parse_constant=_reject_constant)
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
         raise ValueError("invalid assessment file") from error
     if not isinstance(value, dict) or value.get("schema_version") != SCHEMA_VERSION:
@@ -156,7 +162,15 @@ def load_assessment(path: str | Path) -> AssessmentPlan:
         raise ValueError("assessment must define at least one case")
     if len(set(all_ids)) != len(all_ids):
         raise ValueError("assessment case IDs must be unique")
-    return AssessmentPlan(target, actors, access, visibility, protocol)
+    return AssessmentPlan(
+        target,
+        actors,
+        access,
+        visibility,
+        protocol,
+        _safe_source_uri(assessment_path),
+        _case_line_numbers(source_text, all_ids),
+    )
 
 
 def validate_assessment(path: str | Path) -> AssessmentPlan:
@@ -381,6 +395,25 @@ def _validate_json_value(value: object) -> None:
 
 def _reject_constant(value: str) -> None:
     raise ValueError(f"invalid JSON constant: {value}")
+
+
+def _safe_source_uri(path: Path) -> str:
+    """Keep local absolute paths out of portable evidence and SARIF output."""
+    try:
+        return path.resolve().relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return path.name
+
+
+def _case_line_numbers(source_text: str, case_ids: list[str]) -> dict[str, int]:
+    lines: dict[str, int] = {}
+    for case_id in case_ids:
+        pattern = rf'"id"\s*:\s*{re.escape(json.dumps(case_id))}'
+        match = re.search(pattern, source_text)
+        if match is None:
+            raise ValueError("assessment case location could not be determined")
+        lines[case_id] = source_text.count("\n", 0, match.start()) + 1
+    return lines
 
 
 def _lab_template() -> dict[str, Any]:
