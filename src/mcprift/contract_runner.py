@@ -1,4 +1,4 @@
-"""Execution and verdict evaluation for v0.4 authorization contracts."""
+"""Execution and verdict evaluation for authorization contracts."""
 
 from __future__ import annotations
 
@@ -22,7 +22,10 @@ async def run_contract(
     access_cases = plan.runtime_access_cases(actors)
     if access_cases:
         access_results = await run_cases(plan.target, access_cases)
-        results.extend(_access_result(result) for result in access_results)
+        results.extend(
+            _access_result(result, plan.source_for(result.case.case_id))
+            for result in access_results
+        )
 
     for case in plan.visibility:
         actor = actors[case.actor_name]
@@ -48,6 +51,7 @@ async def run_contract(
                 expected=case.expected,
                 observed=observed,
                 verdict=verdict,
+                source=plan.source_for(case.case_id),
             )
         )
 
@@ -82,17 +86,21 @@ async def run_contract(
                 expected=case.expected,
                 observed=observed,
                 verdict=verdict,
+                source=plan.source_for(case.case_id),
             )
         )
     return tuple(results)
 
 
-def _access_result(result: Any) -> dict[str, Any]:
+def _access_result(result: Any, source: dict[str, str | int]) -> dict[str, Any]:
     case = result.case
     observation = result.observation
-    if observation.outcome is Outcome.SUCCEEDED:
+    if observation.outcome is Outcome.ALLOWED:
         observed = "allowed"
-    elif observation.outcome is Outcome.REJECTED:
+    elif observation.outcome in {
+        Outcome.AUTHENTICATION_DENIED,
+        Outcome.AUTHORIZATION_DENIED,
+    }:
         observed = "denied"
     else:
         observed = "error"
@@ -105,6 +113,7 @@ def _access_result(result: Any) -> dict[str, Any]:
         expected=case.expected.value,
         observed=observed,
         verdict=result.status.value,
+        source=source,
         session={
             "policy": case.session_policy.value,
             **(
@@ -133,6 +142,7 @@ def _base_result(
     expected: str,
     observed: str,
     verdict: str,
+    source: dict[str, str | int],
     session: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     result: dict[str, Any] = {
@@ -144,6 +154,7 @@ def _base_result(
         "expected": expected,
         "observed": observed,
         "verdict": verdict,
+        "source": source,
     }
     if session is not None:
         result["session"] = session
