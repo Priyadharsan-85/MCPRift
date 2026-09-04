@@ -59,7 +59,7 @@ async def run_contract(
         try:
             observation = await run_mutation(plan.target, case.mutation)
             if observation.http_status == 429:
-                observed, verdict = "rate-limited", "error"
+                observed, verdict = "rate-limited", "rate-limited"
                 probe = {
                     "kind": "protocol-mutation",
                     "mutation": case.mutation.value,
@@ -111,15 +111,19 @@ def _access_result(result: Any, source: dict[str, str | int]) -> dict[str, Any]:
     observation = result.observation
     if observation.outcome is Outcome.ALLOWED:
         observed = "allowed"
+        verdict = "pass"
     elif observation.outcome in {
         Outcome.AUTHENTICATION_DENIED,
         Outcome.AUTHORIZATION_DENIED,
     }:
         observed = "denied"
+        verdict = "fail"
     elif observation.outcome is Outcome.RATE_LIMITED:
         observed = "rate-limited"
+        verdict = "rate-limited"
     else:
         observed = "error"
+        verdict = "error"
     return _base_result(
         case_id=case.case_id,
         title=case.title,
@@ -128,7 +132,7 @@ def _access_result(result: Any, source: dict[str, str | int]) -> dict[str, Any]:
         probe={"kind": case.action.kind.value},
         expected=case.expected.value,
         observed=observed,
-        verdict=result.status.value,
+        verdict=verdict,
         source=source,
         session={
             "policy": case.session_policy.value,

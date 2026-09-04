@@ -1,4 +1,4 @@
-﻿"""Tests for rate-limit (429) detection across operations, security, and reporting."""
+"""Tests for rate-limit (429) detection across operations, security, and reporting."""
 
 from __future__ import annotations
 
@@ -13,16 +13,18 @@ from mcprift.operations import (
     ActionKind,
     Observation,
     Outcome,
-    observe_client,
     _exception_outcome,
+    observe_client,
 )
-from mcprift.reporting import _summary, terminal_report, sarif_report
+from mcprift.reporting import _summary, sarif_report, terminal_report
 from mcprift.security import (
     ExpectedProperty,
     ResultStatus,
     SecurityCase,
     evaluate,
 )
+
+# ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +126,9 @@ class RateLimitSummaryTests(unittest.TestCase):
     """_summary must include a rate-limited count in the output line."""
 
     def test_summary_includes_rate_limited_when_nonzero(self) -> None:
-        counts: Counter[str] = Counter({"pass": 5, "fail": 1, "error": 0, "rate-limited": 2})
+        counts: Counter[str] = Counter(
+            {"pass": 5, "fail": 1, "error": 0, "rate-limited": 2}
+        )
         result = _summary(counts, color=False)
         self.assertIn("2 rate-limited", result)
         self.assertIn("5 passed", result)
