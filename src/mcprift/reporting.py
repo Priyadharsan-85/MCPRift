@@ -116,12 +116,13 @@ def sarif_report(evidence: dict[str, Any]) -> str:
         }
         if check["passed"]:
             continue
+        rate_limited = "HTTP 429" in check["observed"]
         findings.append(
             {
                 "ruleId": check_id,
-                "level": "error",
+                "level": "warning" if rate_limited else "error",
                 "message": {"text": f"{check['title']}: observed {check['observed']}"},
-                "properties": {"rate_limited": check.get("observed") == "rate-limited"},
+                "properties": {"rate_limited": rate_limited},
             }
         )
     document = {

@@ -111,19 +111,15 @@ def _access_result(result: Any, source: dict[str, str | int]) -> dict[str, Any]:
     observation = result.observation
     if observation.outcome is Outcome.ALLOWED:
         observed = "allowed"
-        verdict = "pass"
     elif observation.outcome in {
         Outcome.AUTHENTICATION_DENIED,
         Outcome.AUTHORIZATION_DENIED,
     }:
         observed = "denied"
-        verdict = "fail"
     elif observation.outcome is Outcome.RATE_LIMITED:
         observed = "rate-limited"
-        verdict = "rate-limited"
     else:
         observed = "error"
-        verdict = "error"
     return _base_result(
         case_id=case.case_id,
         title=case.title,
@@ -132,7 +128,11 @@ def _access_result(result: Any, source: dict[str, str | int]) -> dict[str, Any]:
         probe={"kind": case.action.kind.value},
         expected=case.expected.value,
         observed=observed,
-        verdict=verdict,
+        verdict=(
+            "rate-limited"
+            if observation.outcome is Outcome.RATE_LIMITED
+            else result.status.value
+        ),
         source=source,
         session={
             "policy": case.session_policy.value,
