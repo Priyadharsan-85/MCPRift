@@ -86,7 +86,6 @@ def evaluate(case: SecurityCase, observation: Observation) -> SecurityResult:
         Outcome.PROTOCOL_ERROR,
         Outcome.TRANSPORT_ERROR,
         Outcome.UNAVAILABLE,
-        Outcome.RATE_LIMITED,
     }:
         status = ResultStatus.ERROR
     else:

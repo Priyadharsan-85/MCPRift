@@ -162,8 +162,12 @@ class RateLimitSarifTests(unittest.TestCase):
                         "id": "MCPRIFT-AUTH-002",
                         "title": "Alice can invoke the safe tool",
                         "actor": {"name": "alice", "kind": "authenticated"},
-                        "action": {"kind": "tool-call", "target": "safe_echo",
-                                   "argument_names": [], "known_safe": True},
+                        "action": {
+                            "kind": "tool-call",
+                            "target": "safe_echo",
+                            "argument_names": [],
+                            "known_safe": True,
+                        },
                         "expected": "allowed",
                         "session": {"policy": "isolated"},
                     },
@@ -183,6 +187,7 @@ class RateLimitSarifTests(unittest.TestCase):
 
     def test_rate_limited_status_renders_as_sarif_warning(self) -> None:
         import json
+
         evidence = self._make_evidence("error", "rate-limited")
         doc = json.loads(sarif_report(evidence))
         findings = doc["runs"][0]["results"]
@@ -191,6 +196,7 @@ class RateLimitSarifTests(unittest.TestCase):
 
     def test_fail_status_renders_as_sarif_error(self) -> None:
         import json
+
         evidence = self._make_evidence("fail", "allowed")
         doc = json.loads(sarif_report(evidence))
         findings = doc["runs"][0]["results"]
@@ -214,8 +220,12 @@ class RateLimitTerminalReportTests(unittest.TestCase):
                         "id": "MCPRIFT-AUTH-002",
                         "title": "Alice can invoke the safe tool",
                         "actor": {"name": "alice", "kind": "authenticated"},
-                        "action": {"kind": "tool-call", "target": "safe_echo",
-                                   "argument_names": [], "known_safe": True},
+                        "action": {
+                            "kind": "tool-call",
+                            "target": "safe_echo",
+                            "argument_names": [],
+                            "known_safe": True,
+                        },
                         "expected": "allowed",
                         "session": {"policy": "isolated"},
                     },
